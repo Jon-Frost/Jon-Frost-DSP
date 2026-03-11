@@ -108,9 +108,16 @@ def dashboard_page():
         html.Div([
             html.Div([
                 html.H3("Visualisations", style={'margin': '0'}),
-                html.Button('+ Add Chart', id='add-chart-btn', n_clicks=0,
-                            className="btn-primary", style={'width': 'auto'})
+                html.Div([
+                    html.Button('Export PNGs', id='export-dashboard-png-btn', n_clicks=0,
+                                className="btn-secondary", style={'width': 'auto', 'marginRight': '10px'}),
+                    html.Button('+ Add Chart', id='add-chart-btn', n_clicks=0,
+                                className="btn-primary", style={'width': 'auto'})
+                ])
             ], className="header-flex", style={'padding': '0', 'marginBottom': '15px'}),
+
+            dcc.Download(id='download-dashboard-png'),
+            html.Div(id='export-status', style={'color': '#64748b', 'fontSize': '14px', 'marginBottom': '10px'}),
 
             # Add-chart panel (hidden by default)
             html.Div([
@@ -123,6 +130,7 @@ def dashboard_page():
                             {'label': 'Line',      'value': 'line'},
                             {'label': 'Scatter',   'value': 'scatter'},
                             {'label': 'Histogram', 'value': 'histogram'},
+                            {'label': 'Pie',       'value': 'pie'},
                             {'label': 'Box Plot',  'value': 'box'},
                         ],
                         value='bar', clearable=False, style={'minWidth': '160px'}
@@ -134,7 +142,7 @@ def dashboard_page():
                 ]),
                 html.Div([
                     html.Label("Y Axis", style={'fontWeight': '600', 'marginBottom': '5px', 'display': 'block'}),
-                    dcc.Dropdown(id='new-chart-y', options=[], placeholder='(auto for histogram)', style={'minWidth': '160px'}),
+                    dcc.Dropdown(id='new-chart-y', options=[], placeholder='(optional for histogram/pie)', style={'minWidth': '160px'}),
                 ]),
                 html.Div([
                     html.Label("Title", style={'fontWeight': '600', 'marginBottom': '5px', 'display': 'block'}),

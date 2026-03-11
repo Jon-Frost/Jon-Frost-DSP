@@ -4,10 +4,12 @@ from flask import Flask
 from dash import Dash, html, dcc, Input, Output, State, dash_table, no_update, ctx, MATCH, ALL
 import os
 import io
+import zipfile
 import base64
 import uuid
 import pandas as pd
 import plotly.express as px
+import plotly.io as pio
 from dotenv import load_dotenv
 from google import genai
 from werkzeug.security import check_password_hash
@@ -75,6 +77,13 @@ def make_figure(viz, df):
     try:
         if chart_type == 'histogram':
             fig = px.histogram(df, x=x, title=title)
+        elif chart_type == 'pie':
+            if y:
+                fig = px.pie(df, names=x, values=y, title=title)
+            else:
+                counts = df[x].value_counts(dropna=False).reset_index()
+                counts.columns = [x, 'count']
+                fig = px.pie(counts, names=x, values='count', title=title)
         elif chart_type == 'box':
             fig = px.box(df, x=x, y=y, title=title) if y else px.box(df, y=x, title=title)
         elif chart_type == 'bar':
@@ -301,15 +310,20 @@ def restore_dashboard_state(_, active_session):
 
 @app.callback(
     Output('add-chart-panel', 'style'),
-    Input('add-chart-btn', 'n_clicks'),
+    [Input('add-chart-btn', 'n_clicks'),
+     Input('confirm-add-chart-btn', 'n_clicks')],
     State('add-chart-panel', 'style'),
     prevent_initial_call=True
 )
-def toggle_add_panel(n_clicks, current_style):
-    if not n_clicks:
+def toggle_add_panel(add_clicks, confirm_clicks, current_style):
+    if not add_clicks and not confirm_clicks:
         return no_update
     base = dict(current_style)
-    base['display'] = 'flex' if n_clicks % 2 == 1 else 'none'
+    trigger = ctx.triggered_id
+    if trigger == 'confirm-add-chart-btn':
+        base['display'] = 'none'
+    elif trigger == 'add-chart-btn':
+        base['display'] = 'flex'
     return base
 
 
@@ -410,6 +424,43 @@ def delete_visual(n_clicks_list, visuals, active_session):
     if active_session and 'session_id' in active_session:
         save_visuals(active_session['session_id'], visuals)
     return visuals
+
+@app.callback(
+    [Output('download-dashboard-png', 'data'),
+     Output('export-status', 'children')],
+    Input('export-dashboard-png-btn', 'n_clicks'),
+    [State('visuals-store', 'data'),
+     State('stored-data', 'data')],
+    prevent_initial_call=True
+)
+def export_dashboard_pngs(n_clicks, visuals, stored_data):
+    if not n_clicks:
+        return no_update, no_update
+    if not stored_data:
+        return no_update, "Upload a dataset before exporting charts."
+    if not visuals:
+        return no_update, "Add at least one chart before exporting."
+
+    try:
+        df = pd.DataFrame(stored_data)
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for idx, viz in enumerate(visuals, start=1):
+                fig = make_figure(viz, df)
+                img_bytes = pio.to_image(fig, format='png', width=1400, height=900, scale=2)
+
+                title = viz.get('title', f'chart_{idx}')
+                safe_title = "".join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in title).strip('_')
+                if not safe_title:
+                    safe_title = f'chart_{idx}'
+
+                zf.writestr(f"{idx:02d}_{safe_title}.png", img_bytes)
+
+        zip_buffer.seek(0)
+        return dcc.send_bytes(zip_buffer.getvalue(), "dashboard_png_exports.zip"), f"Exported {len(visuals)} chart PNG file(s)."
+    except Exception as e:
+        return no_update, f"Export failed: {e}. Install/upgrade kaleido in your environment if needed."
 
 
 client = genai.Client(api_key=api_key)
